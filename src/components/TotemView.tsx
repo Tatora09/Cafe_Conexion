@@ -4,9 +4,10 @@ import {
   Coffee, CupSoda, Cookie, Utensils, 
   ShoppingCart, ChevronRight, ArrowLeft, Trash2, 
   Plus, Minus, Check, Sparkles, Award, User, RefreshCw,
-  Clock, Camera, Scan, Smile, Video, VideoOff, ShieldCheck
+  Clock, Camera, Scan, Smile, Video, VideoOff, ShieldCheck,
+  Gift, Tag, X, ShoppingBag
 } from 'lucide-react';
-import { Product, CartItem, Order, LoyaltyMember, CustCustomization } from '../types';
+import { Product, CartItem, Order, LoyaltyMember, CustCustomization, RedemptionReward } from '../types';
 
 interface TotemViewProps {
   products: Product[];
@@ -270,9 +271,37 @@ export default function TotemView({
     }
   };
 
+  // Points redemption states
+  const [appliedRedemption, setAppliedRedemption] = useState<RedemptionReward | null>(null);
+  const [isRedemptionModalOpen, setIsRedemptionModalOpen] = useState(false);
+
+  const AVAILABLE_REWARDS: RedemptionReward[] = [
+    { id: 'desc1000', name: 'Descuento $1.000 CLP', type: 'discount', pointsCost: 100, discountValue: 1000, icon: '💵' },
+    { id: 'desc3000', name: 'Descuento $3.000 CLP', type: 'discount', pointsCost: 250, discountValue: 3000, icon: '💸' },
+    { id: 'desc_half', name: '50% Descuento Total', type: 'discount', pointsCost: 500, discountValue: 0, icon: '🔥' },
+    { id: 'free_espresso', name: 'Espresso Gratis', type: 'free_product', pointsCost: 120, itemLabel: 'Espresso Gratis (Club)', icon: '☕' },
+    { id: 'free_medialuna', name: 'Medialuna Gratis', type: 'free_product', pointsCost: 150, itemLabel: 'Medialuna Gratis (Club)', icon: '🥐' },
+    { id: 'free_capuchino', name: 'Capuchino Grande Gratis', type: 'free_product', pointsCost: 200, itemLabel: 'Capuchino Grande Gratis (Club)', icon: '🥤' },
+    { id: 'merch_taza', name: 'Taza Exclusiva de Cerámica', type: 'merch', pointsCost: 400, itemLabel: 'Taza Exclusiva (Club)', icon: '🍵' },
+    { id: 'merch_bag', name: 'Bolsa Eco "Keep Coffee Local"', type: 'merch', pointsCost: 300, itemLabel: 'Bolsa Ecológica Club', icon: '🛍️' },
+    { id: 'merch_jarra', name: 'Jarra Acero Negro Barista', type: 'merch', pointsCost: 600, itemLabel: 'Jarra Acero Negro Barista', icon: '🏺' }
+  ];
+
   // Cart numbers
   const cartSubtotal = cart.reduce((sum, item) => sum + (calculateItemPrice(item.product, item.customization) * item.quantity), 0);
-  const totalPointsEarned = Math.floor(cartSubtotal / 100);
+  
+  const getDiscountValue = (): number => {
+    if (!appliedRedemption) return 0;
+    if (appliedRedemption.type !== 'discount') return 0;
+    if (appliedRedemption.id === 'desc_half') {
+      return Math.floor(cartSubtotal * 0.5);
+    }
+    return appliedRedemption.discountValue || 0;
+  };
+
+  const discountCLP = getDiscountValue();
+  const cartTotal = Math.max(0, cartSubtotal - discountCLP);
+  const totalPointsEarned = Math.floor(cartTotal / 100);
 
   // Loyalty verification
   const handleVerifyLoyalty = () => {
@@ -308,10 +337,30 @@ export default function TotemView({
     const orderId = `N-${Math.floor(100 + Math.random() * 900)}`;
     const waitTime = Math.floor(Math.random() * 6) + 3; // 3 to 8 minutes
 
+    // If they have redeemed a free product or a merch, add it as a $0 CartItem
+    const finalItems = [...cart];
+    if (appliedRedemption && (appliedRedemption.type === 'free_product' || appliedRedemption.type === 'merch')) {
+      const freeRewardProduct: Product = {
+        id: `reward-${appliedRedemption.id}`,
+        name: appliedRedemption.itemLabel || appliedRedemption.name,
+        desc: '🎁 Premio Canjeado con Puntos Club',
+        price: 0,
+        cat: 'combos',
+        stock: true,
+        icon: appliedRedemption.icon || '🎁'
+      };
+      const rewardCartItem: CartItem = {
+        id: `reward-item-${appliedRedemption.id}`,
+        product: freeRewardProduct,
+        quantity: 1
+      };
+      finalItems.push(rewardCartItem);
+    }
+
     const order: Order = {
       id: orderId,
-      items: [...cart],
-      total: cartSubtotal,
+      items: finalItems,
+      total: cartTotal,
       pointsEarned: totalPointsEarned,
       customerId: verifiedMember ? verifiedMember.rut : rutInput.trim() || 'Anónimo',
       customerName: verifiedMember?.name || undefined,
@@ -323,9 +372,13 @@ export default function TotemView({
     onPlaceOrder(order);
     setLastOrder(order);
     
-    // Auto add points to loyalty member if registered in local storage
+    // Auto add points and subtract points cost if loyalty member is registered 
     if (verifiedMember) {
-      const updatedMember = { ...verifiedMember, points: verifiedMember.points + totalPointsEarned };
+      const pointsCost = appliedRedemption ? appliedRedemption.pointsCost : 0;
+      const updatedMember = { 
+        ...verifiedMember, 
+        points: Math.max(0, verifiedMember.points - pointsCost) + totalPointsEarned 
+      };
       onRegisterLoyalty(updatedMember);
     }
 
@@ -334,6 +387,7 @@ export default function TotemView({
     setStep('success');
     setRutInput('');
     setVerifiedMember(null);
+    setAppliedRedemption(null);
     setIsNewMemberPrompt(false);
   };
 
@@ -341,6 +395,7 @@ export default function TotemView({
     setLastOrder(null);
     setStep('categories');
     setSelectedCat(null);
+    setAppliedRedemption(null);
   };
 
   return (
@@ -866,13 +921,53 @@ export default function TotemView({
                         </div>
                       </div>
 
-                      <div className="flex justify-between items-center border-t border-dashed border-amber-200 pt-2 mt-1">
+                      {/* Points status and catalog opening */}
+                      <div className="bg-amber-50 rounded-xl p-3 border border-amber-200/60 mt-3 space-y-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-semibold text-cafe-medium">Tus Puntos Club:</span>
+                          <span className="text-sm font-extrabold text-amber-800 font-mono flex items-center gap-1">
+                            <Award className="w-4 h-4 text-gold" style={{ filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.1))' }} />
+                            {verifiedMember.points} PTS
+                          </span>
+                        </div>
+
+                        {appliedRedemption ? (
+                          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 flex items-center justify-between">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-lg">{appliedRedemption.icon || '🎁'}</span>
+                              <div className="text-[11px] leading-tight">
+                                <p className="font-bold text-emerald-800">Canjeado: {appliedRedemption.name}</p>
+                                <p className="text-[9px] text-emerald-600 font-medium">-{appliedRedemption.pointsCost} puntos</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setAppliedRedemption(null)}
+                              className="text-red-500 hover:text-red-700 text-xxs font-bold uppercase tracking-wider px-2 py-1 rounded hover:bg-red-50"
+                            >
+                              Quitar
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setIsRedemptionModalOpen(true)}
+                            className="w-full bg-cafe-dark hover:bg-cafe-medium text-white font-bold text-xs py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 shadow-xs transition"
+                          >
+                            <Gift className="w-3.5 h-3.5 text-gold" />
+                            <span>Canjear Puntos por Premios</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex justify-between items-center border-t border-dashed border-amber-200 pt-2 mt-3">
                         <p className="text-[10px] text-oliva font-medium flex items-center gap-1">
                           <Award className="w-3.5 h-3.5" />
                           <span>Sumarás <strong>{totalPointsEarned} pts</strong> con esta compra</span>
                         </p>
                         <button
-                          onClick={() => { setVerifiedMember(null); setRutInput(''); stopCamera(); }}
+                          type="button"
+                          onClick={() => { setVerifiedMember(null); setRutInput(''); setAppliedRedemption(null); stopCamera(); }}
                           className="text-[10px] text-red-500 hover:underline font-bold"
                         >
                           Cerrar Sesión
@@ -997,9 +1092,37 @@ export default function TotemView({
                 {/* PAYMENT METHOD DETIAL */}
                 <div className="bg-cafe-dark text-crema-light rounded-2xl p-4 shadow-sm space-y-3">
                   <span className="text-[10px] font-bold tracking-widest text-gold-light uppercase block">PAGO SIMULADO</span>
-                  <div className="flex justify-between items-end border-b border-cafe-light/30 pb-3">
-                    <span className="text-xs text-crema-dark">Total a pagar:</span>
-                    <span className="text-xl font-bold font-mono text-white">${cartSubtotal.toLocaleString('es-CL')} CLP</span>
+                  
+                  <div className="space-y-2 border-b border-cafe-light/30 pb-3 text-left">
+                    <div className="flex justify-between items-center text-xs text-crema-dark">
+                      <span>Subtotal de items:</span>
+                      <span className="font-mono">${cartSubtotal.toLocaleString('es-CL')} CLP</span>
+                    </div>
+
+                    {appliedRedemption && getDiscountValue() > 0 && (
+                      <div className="flex justify-between items-center text-xs text-emerald-400 font-semibold bg-emerald-950/20 px-2 py-1 rounded">
+                        <span className="flex items-center gap-1">
+                          <Tag className="w-3 h-3 text-emerald-450 shrink-0" />
+                          <span>Descuento Club ({appliedRedemption.name}):</span>
+                        </span>
+                        <span className="font-mono">-${getDiscountValue().toLocaleString('es-CL')} CLP</span>
+                      </div>
+                    )}
+
+                    {appliedRedemption && (appliedRedemption.type === 'free_product' || appliedRedemption.type === 'merch') && (
+                      <div className="flex justify-between items-center text-xs text-emerald-400 font-semibold bg-emerald-950/20 px-2' py-1 rounded">
+                        <span className="flex items-center gap-1 shrink-0">
+                          <Gift className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Canje Gratis:</span>
+                        </span>
+                        <span className="max-w-[150px] truncate">{appliedRedemption.name}</span>
+                      </div>
+                    )}
+
+                    <div className="flex justify-between items-end pt-1">
+                      <span className="text-xs text-crema-dark font-bold">Total a pagar:</span>
+                      <span className="text-xl font-bold font-mono text-white">${cartTotal.toLocaleString('es-CL')} CLP</span>
+                    </div>
                   </div>
 
                   <div className="space-y-1.5">
@@ -1237,6 +1360,231 @@ export default function TotemView({
                 >
                   <span>Agregar al Pedido</span>
                   <Check className="w-4 h-4" />
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* POINTS REDEMPTION CATALOG MODAL */}
+        {isRedemptionModalOpen && verifiedMember && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[9999]" onClick={() => setIsRedemptionModalOpen(false)}>
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              className="bg-white border-2 border-cafe-medium rounded-3xl p-6 shadow-2xl max-w-2xl w-full relative overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Top accent design */}
+              <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-amber-500 via-gold to-oliva" />
+
+              {/* Close Button */}
+              <button
+                onClick={() => setIsRedemptionModalOpen(false)}
+                className="absolute top-4 right-4 text-cafe-light hover:text-cafe-dark p-2 rounded-xl hover:bg-crema-light transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {/* Header */}
+              <div className="text-center mb-6">
+                <div className="inline-flex items-center gap-1.5 bg-amber-50 border border-gold/40 text-amber-900 px-3.5 py-1.5 rounded-full text-xs font-bold mb-2 shadow-xs">
+                  <Gift className="w-4 h-4 text-gold animate-pulse" />
+                  <span>PREMIOS Y RECOMPENSAS CLUB</span>
+                </div>
+                <h3 className="text-xl font-extrabold text-cafe-dark">Catálogo de Canje</h3>
+                <p className="text-xs text-cafe-light mt-1">
+                  Canjea tus puntos acumulados por promociones exclusivas, café gratis o merchandising oficial.
+                </p>
+
+                {/* Point count indicator */}
+                <div className="bg-amber-50 border border-gold/20 rounded-2xl p-3 max-w-sm mx-auto mt-3 flex justify-between items-center px-5">
+                  <div className="text-left">
+                    <p className="text-[10px] font-bold text-cafe-light uppercase">Puntos Disponibles</p>
+                    <p className="text-xs text-cafe-medium font-semibold">{verifiedMember.name}</p>
+                  </div>
+                  <div className="text-2xl font-black text-amber-800 font-mono flex items-center gap-1">
+                    <Award className="w-6 h-6 text-gold" style={{ filter: 'drop-shadow(0 1px 1px rgba(0,0,0,0.15))' }} />
+                    <span>{verifiedMember.points}</span>
+                    <span className="text-xs text-cafe-medium font-bold ml-1">PTS</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Grid content */}
+              <div className="max-h-[350px] overflow-y-auto pr-1 space-y-4 text-left">
+                {/* Descuentos */}
+                <div>
+                  <h4 className="text-xs font-bold text-cafe-medium uppercase tracking-wider mb-2 flex items-center gap-1 text-left border-b border-crema-dark pb-1.5">
+                    <Tag className="w-3.5 h-3.5 text-gold" />
+                    <span>Descuentos en Boleta</span>
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {AVAILABLE_REWARDS.filter(r => r.type === 'discount').map(reward => {
+                      const canAfford = verifiedMember.points >= reward.pointsCost;
+                      const isSelected = appliedRedemption?.id === reward.id;
+                      return (
+                        <div
+                          key={reward.id}
+                          className={`border rounded-2xl p-3 flex flex-col justify-between transition-all ${
+                            isSelected
+                              ? 'bg-emerald-50 border-emerald-500 shadow-sm'
+                              : 'bg-white border-crema-dark hover:border-cafe-light/40'
+                          }`}
+                        >
+                          <div className="text-center pb-2">
+                            <span className="text-2xl block mb-1">{reward.icon}</span>
+                            <span className="text-xs font-bold text-cafe-dark block leading-tight">{reward.name}</span>
+                            <span className="text-[10px] text-amber-800 font-bold font-mono mt-1 block bg-amber-50 rounded-md py-0.5 max-w-[90px] mx-auto border border-amber-200/50">
+                              {reward.pointsCost} PTS
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={!canAfford && !isSelected}
+                            onClick={() => {
+                              if (isSelected) {
+                                setAppliedRedemption(null);
+                              } else {
+                                setAppliedRedemption(reward);
+                                setIsRedemptionModalOpen(false);
+                              }
+                            }}
+                            className={`w-full py-1.5 rounded-lg text-xxs font-bold transition-all ${
+                              isSelected
+                                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                : canAfford
+                                ? 'bg-cafe-dark hover:bg-cafe-medium text-white shadow-xs'
+                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            }`}
+                          >
+                            {isSelected ? 'Desestimar' : canAfford ? 'Canjear' : 'Faltan Puntos'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Bebidas y Alimentos */}
+                <div>
+                  <h4 className="text-xs font-bold text-cafe-medium uppercase tracking-wider mb-2 flex items-center gap-1 text-left border-b border-crema-dark pb-1.5 pt-2">
+                    <Coffee className="w-3.5 h-3.5 text-cafe-light" />
+                    <span>Bebidas y Alimentos Gratis</span>
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {AVAILABLE_REWARDS.filter(r => r.type === 'free_product').map(reward => {
+                      const canAfford = verifiedMember.points >= reward.pointsCost;
+                      const isSelected = appliedRedemption?.id === reward.id;
+                      return (
+                        <div
+                          key={reward.id}
+                          className={`border rounded-2xl p-3 flex flex-col justify-between transition-all ${
+                            isSelected
+                              ? 'bg-emerald-50 border-emerald-500 shadow-sm'
+                              : 'bg-white border-crema-dark hover:border-cafe-light/40'
+                          }`}
+                        >
+                          <div className="text-center pb-2">
+                            <span className="text-2xl block mb-1">{reward.icon}</span>
+                            <span className="text-xs font-bold text-cafe-dark block leading-tight">{reward.name}</span>
+                            <span className="text-[10px] text-amber-800 font-bold font-mono mt-1 block bg-amber-50 rounded-md py-0.5 max-w-[90px] mx-auto border border-amber-200/50">
+                              {reward.pointsCost} PTS
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={!canAfford && !isSelected}
+                            onClick={() => {
+                              if (isSelected) {
+                                setAppliedRedemption(null);
+                              } else {
+                                setAppliedRedemption(reward);
+                                setIsRedemptionModalOpen(false);
+                              }
+                            }}
+                            className={`w-full py-1.5 rounded-lg text-xxs font-bold transition-all ${
+                              isSelected
+                                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                : canAfford
+                                ? 'bg-cafe-dark hover:bg-cafe-medium text-white shadow-xs'
+                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            }`}
+                          >
+                            {isSelected ? 'Desestimar' : canAfford ? 'Canjear' : 'Faltan Puntos'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Merchandising */}
+                <div>
+                  <h4 className="text-xs font-bold text-cafe-medium uppercase tracking-wider mb-2 flex items-center gap-1 text-left border-b border-crema-dark pb-1.5 pt-2">
+                    <ShoppingBag className="w-3.5 h-3.5 text-oliva" />
+                    <span>Coleccionables y Accesorios (Merch)</span>
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {AVAILABLE_REWARDS.filter(r => r.type === 'merch').map(reward => {
+                      const canAfford = verifiedMember.points >= reward.pointsCost;
+                      const isSelected = appliedRedemption?.id === reward.id;
+                      return (
+                        <div
+                          key={reward.id}
+                          className={`border rounded-2xl p-3 flex flex-col justify-between transition-all ${
+                            isSelected
+                              ? 'bg-emerald-50 border-emerald-500 shadow-sm'
+                              : 'bg-white border-crema-dark hover:border-cafe-light/40'
+                          }`}
+                        >
+                          <div className="text-center pb-2">
+                            <span className="text-2xl block mb-1">{reward.icon}</span>
+                            <span className="text-xs font-bold text-cafe-dark block leading-tight">{reward.name}</span>
+                            <span className="text-[10px] text-amber-800 font-bold font-mono mt-1 block bg-amber-50 rounded-md py-0.5 max-w-[90px] mx-auto border border-amber-200/50">
+                              {reward.pointsCost} PTS
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            disabled={!canAfford && !isSelected}
+                            onClick={() => {
+                              if (isSelected) {
+                                setAppliedRedemption(null);
+                              } else {
+                                setAppliedRedemption(reward);
+                                setIsRedemptionModalOpen(false);
+                              }
+                            }}
+                            className={`w-full py-1.5 rounded-lg text-xxs font-bold transition-all ${
+                              isSelected
+                                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                : canAfford
+                                ? 'bg-cafe-dark hover:bg-cafe-medium text-white shadow-xs'
+                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            }`}
+                          >
+                            {isSelected ? 'Desestimar' : canAfford ? 'Canjear' : 'Faltan Puntos'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Bottom footer note */}
+              <div className="border-t border-crema-light pt-4 mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsRedemptionModalOpen(false)}
+                  className="bg-cafe-dark hover:bg-cafe-medium text-white font-bold text-xs px-5 py-2.5 rounded-xl transition duration-200"
+                >
+                  Cerrar Catálogo
                 </button>
               </div>
             </motion.div>

@@ -42,3 +42,13 @@ export interface LoyaltyMember {
   points: number;
   faceData?: string; // Base64 snapshot of face for visual comparison/simulated recognition
 }
+
+export interface RedemptionReward {
+  id: string;
+  name: string;
+  type: 'discount' | 'free_product' | 'merch';
+  pointsCost: number;
+  discountValue?: number; // CLP discount value
+  itemLabel?: string; // Free item reward details
+  icon?: string; // Icon or emoji for display
+}
