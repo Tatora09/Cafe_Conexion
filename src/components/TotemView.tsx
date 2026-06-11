@@ -4,7 +4,7 @@ import {
   Coffee, CupSoda, Cookie, Utensils, 
   ShoppingCart, ChevronRight, ArrowLeft, Trash2, 
   Plus, Minus, Check, Sparkles, Award, User, RefreshCw,
-  Clock
+  Clock, Camera, Scan, Smile, Video, VideoOff, ShieldCheck
 } from 'lucide-react';
 import { Product, CartItem, Order, LoyaltyMember, CustCustomization } from '../types';
 
@@ -42,6 +42,152 @@ export default function TotemView({
   const [verifiedMember, setVerifiedMember] = useState<LoyaltyMember | null>(null);
   const [isNewMemberPrompt, setIsNewMemberPrompt] = useState(false);
   const [newMemberName, setNewMemberName] = useState('');
+
+  // Camera & Face-recognition states
+  const [authMethod, setAuthMethod] = useState<'rut' | 'face'>('rut');
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [isCameraLoading, setIsCameraLoading] = useState(false);
+  const [faceScanStatus, setFaceScanStatus] = useState<'idle' | 'scanning' | 'matched' | 'no-match' | 'error'>('idle');
+  const [tempFaceData, setTempFaceData] = useState<string | null>(null);
+  const [scannedFacePreview, setScannedFacePreview] = useState<string | null>(null);
+  const [faceScanMessage, setFaceScanMessage] = useState('Alinea tu rostro dentro del marco verde');
+
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
+
+  // Stop camera stream upon changing steps or unmounting
+  React.useEffect(() => {
+    return () => {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [step]);
+
+  // Start webcam for authentication or registration
+  const startCamera = async () => {
+    setIsCameraLoading(true);
+    setFaceScanStatus('idle');
+    setScannedFacePreview(null);
+    setFaceScanMessage('Iniciando cámara de reconocimiento...');
+    try {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+      }
+      
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 320, height: 240, facingMode: 'user' }
+      });
+      setCameraStream(stream);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(e => console.error("Error playing video:", e));
+        }
+      }, 100);
+      setFaceScanMessage('Alinea tu rostro dentro del marco del escáner');
+    } catch (err) {
+      console.error("Camera access failed:", err);
+      setFaceScanStatus('error');
+      setFaceScanMessage('No se pudo acceder a la cámara. Otorga permisos en el navegador.');
+    } finally {
+      setIsCameraLoading(false);
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+  };
+
+  // Perform simulated face scan to authenticate
+  const handleFaceAuthenticate = () => {
+    if (!videoRef.current) return;
+    
+    // Capture snapshot from video using canvas
+    try {
+      const video = videoRef.current;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 320;
+      canvas.height = video.videoHeight || 240;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Horizontally mirrored image
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        setScannedFacePreview(dataUrl);
+      }
+    } catch (e) {
+      console.error("Failed to capture snapshot:", e);
+    }
+
+    setFaceScanStatus('scanning');
+    setFaceScanMessage('Analizando biometría facial...');
+
+    // Simulate recognition processing delay
+    setTimeout(() => {
+      // Find members with facial data
+      const membersWithFace = loyaltyMembers.filter(m => !!m.faceData);
+      
+      if (membersWithFace.length > 0) {
+        // Authenticate the first matched member with face registered
+        const matched = membersWithFace[0];
+        setVerifiedMember(matched);
+        setFaceScanStatus('matched');
+        setFaceScanMessage(`¡Bienvenido de vuelta, ${matched.name}!`);
+        stopCamera();
+      } else {
+        // No faces registered yet
+        setFaceScanStatus('no-match');
+        setFaceScanMessage('No se encontraron rostros asociados en el Club.');
+      }
+    }, 2000);
+  };
+
+  // Force Demo Recognition easily
+  const handleForceDemoRecognition = () => {
+    setFaceScanStatus('scanning');
+    setFaceScanMessage('Analizando sensores faciales de demostración...');
+    setTimeout(() => {
+      // Pick Carlos González or Daniela Silva as demo member
+      let demoMember = loyaltyMembers.find(m => m.rut === '20.123.456-7');
+      if (!demoMember && loyaltyMembers.length > 0) {
+        demoMember = loyaltyMembers[0];
+      }
+      if (demoMember) {
+        setVerifiedMember(demoMember);
+        setFaceScanStatus('matched');
+        setFaceScanMessage(`¡Bienvenido VIP, ${demoMember.name}!`);
+        stopCamera();
+      }
+    }, 1800);
+  };
+
+  // Register face capture during sign-up
+  const handleCaptureFaceForRegistration = () => {
+    if (!videoRef.current) return;
+    try {
+      const video = videoRef.current;
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 320;
+      canvas.height = video.videoHeight || 240;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg');
+        setTempFaceData(dataUrl);
+        setFaceScanMessage('Rostro capturado con éxito.');
+        stopCamera();
+      }
+    } catch (e) {
+      console.error("Failed to capture registration shot:", e);
+    }
+  };
 
   // Last order state for success screen
   const [lastOrder, setLastOrder] = useState<Order | null>(null);
@@ -540,57 +686,206 @@ export default function TotemView({
               <div className="col-span-2 flex flex-col gap-4 mt-4 md:mt-0">
                 {/* LOYALTY CARD CHNL */}
                 <div className="bg-white border border-crema-dark rounded-2xl p-4 shadow-sm flex flex-col gap-3">
-                  <h4 className="font-bold text-cafe-dark text-sm flex items-center gap-1.5">
-                    <Award className="w-4 h-4 text-gold" />
-                    <span>Club Conexión (RUT)</span>
-                  </h4>
-                  
-                  {!verifiedMember && !isNewMemberPrompt ? (
-                    <div className="space-y-2">
-                      <p className="text-[11px] text-cafe-light">
-                        Digita tu RUT de cliente para acumular 10% de tu compra en puntos canjeables.
-                      </p>
-                      <div className="flex gap-1.5">
-                        <input
-                          type="text"
-                          placeholder="Ex: 12.345.678-9"
-                          value={rutInput}
-                          onChange={(e) => setRutInput(e.target.value)}
-                          className="flex-1 min-h-[44px] bg-crema-light text-cafe-dark border border-crema-dark rounded-xl px-3 text-xs font-mono font-bold placeholder:text-cafe-light placeholder:font-sans focus:outline-none focus:border-cafe-light"
-                        />
+                  <div className="flex justify-between items-center pb-2 border-b border-crema-light">
+                    <h4 className="font-bold text-cafe-dark text-sm flex items-center gap-1.5">
+                      <Award className="w-4 h-4 text-gold" />
+                      <span>Club Conexión</span>
+                    </h4>
+                    {!verifiedMember && !isNewMemberPrompt && (
+                      <div className="flex bg-crema-dark rounded-lg p-0.5 text-xxs font-semibold">
                         <button
-                          onClick={handleVerifyLoyalty}
-                          className="bg-cafe-medium text-white text-xs font-semibold px-3 py-2 rounded-xl hover:bg-cafe-dark"
+                          onClick={() => { setAuthMethod('rut'); stopCamera(); }}
+                          className={`px-2 py-1 rounded-md transition-all ${authMethod === 'rut' ? 'bg-cafe-dark text-white shadow-sm' : 'text-cafe-medium'}`}
                         >
-                          Verificar
+                          RUT
+                        </button>
+                        <button
+                          onClick={() => { setAuthMethod('face'); startCamera(); }}
+                          className={`px-2 py-1 rounded-md transition-all flex items-center gap-1 ${authMethod === 'face' ? 'bg-cafe-dark text-white shadow-sm' : 'text-cafe-medium'}`}
+                        >
+                          <Camera className="w-3 h-3" />
+                          <span>Face ID</span>
                         </button>
                       </div>
-                    </div>
-                  ) : verifiedMember ? (
-                    <div className="bg-amber-50 border border-gold/30 rounded-xl p-3 flex flex-col gap-1 relative">
-                      <div className="absolute top-2 right-2 flex items-center gap-1 bg-yellow-100 text-yellow-800 text-[9px] font-bold px-1.5 py-0.5 rounded-lg shadow-sm animate-bounce">
-                        <Sparkles className="w-2.5 h-2.5" />
-                        <span>CLUB VIP</span>
+                    )}
+                  </div>
+                  
+                  {!verifiedMember && !isNewMemberPrompt ? (
+                    authMethod === 'rut' ? (
+                      <div className="space-y-2">
+                        <p className="text-[11px] text-cafe-light">
+                          Digita tu RUT de cliente para acumular 10% de tu compra en puntos canjeables.
+                        </p>
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="Ex: 12.345.678-9"
+                            value={rutInput}
+                            onChange={(e) => setRutInput(e.target.value)}
+                            className="flex-1 min-h-[44px] bg-crema-light text-cafe-dark border border-crema-dark rounded-xl px-3 text-xs font-mono font-bold placeholder:text-cafe-light placeholder:font-sans focus:outline-none focus:border-cafe-light"
+                          />
+                          <button
+                            onClick={handleVerifyLoyalty}
+                            className="bg-cafe-medium text-white text-xs font-semibold px-3 py-2 rounded-xl hover:bg-cafe-dark"
+                          >
+                            Verificar
+                          </button>
+                        </div>
                       </div>
-                      <p className="text-[10px] font-semibold text-cafe-light">CLIENTE REGISTRADO</p>
-                      <h4 className="font-bold text-cafe-dark text-sm leading-tight">{verifiedMember.name}</h4>
-                      <p className="text-[11px] text-oliva font-medium flex items-center gap-1 mt-0.5">
-                        <Award className="w-3.5 h-3.5" />
-                        <span>Puntos actuales: <strong>{verifiedMember.points}</strong> pts</span>
-                      </p>
-                      <button
-                        onClick={() => { setVerifiedMember(null); setRutInput(''); }}
-                        className="text-[10px] text-red-500 hover:underline text-left mt-2 font-medium"
-                      >
-                        Cambiar cliente / RUT
-                      </button>
+                    ) : (
+                      // Face ID Auth Mode
+                      <div className="space-y-3">
+                        {cameraStream ? (
+                          <div className="relative overflow-hidden rounded-xl bg-black border border-cafe-medium">
+                            <video
+                              ref={videoRef}
+                              autoPlay
+                              playsInline
+                              muted
+                              className="w-full h-44 object-cover scale-x-[-1]"
+                            />
+                            
+                            {/* Scanning Overlays */}
+                            {faceScanStatus === 'scanning' ? (
+                              <div className="absolute inset-0 bg-black/30 flex flex-col items-center justify-center p-4">
+                                <div className="w-16 h-16 rounded-full border-4 border-emerald-400 border-t-transparent animate-spin mb-2" />
+                                <span className="bg-emerald-500 text-white text-xxs font-bold px-2 py-0.5 rounded-full uppercase tracking-widest animate-pulse">
+                                  Escaneando biométrico...
+                                </span>
+                                {/* Pulsing scanning line */}
+                                <div className="absolute left-0 right-0 h-1 bg-emerald-400 opacity-90 shadow-[0_0_8px_#34d399] animate-[bounce_1.5s_infinite] top-0" />
+                              </div>
+                            ) : faceScanStatus === 'matched' ? (
+                              <div className="absolute inset-0 bg-emerald-950/80 flex flex-col items-center justify-center text-center p-3 animate-pulse">
+                                <div className="w-12 h-12 rounded-full bg-emerald-500 text-white flex items-center justify-center mb-2">
+                                  <ShieldCheck className="w-6 h-6" />
+                                </div>
+                                <span className="text-white font-bold text-xs">Rostro Coincide</span>
+                                <span className="text-emerald-200 text-xxs">{faceScanMessage}</span>
+                              </div>
+                            ) : (
+                              <div className="absolute inset-0 flex flex-col justify-between p-3 pointer-events-none">
+                                {/* Reticle Target Overlay */}
+                                <div className="absolute inset-6 border border-dashed border-emerald-400/60 rounded-full flex items-center justify-center">
+                                  <div className="w-4 h-4 border-t-2 border-l-2 border-emerald-400 absolute top-0 left-0" />
+                                  <div className="w-4 h-4 border-t-2 border-r-2 border-emerald-400 absolute top-0 right-0" />
+                                  <div className="w-4 h-4 border-b-2 border-l-2 border-emerald-400 absolute bottom-0 left-0" />
+                                  <div className="w-4 h-4 border-b-2 border-r-2 border-emerald-400 absolute bottom-0 right-0" />
+                                  <Scan className="w-8 h-8 text-emerald-400/50 animate-pulse" />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="border border-dashed border-crema-dark rounded-xl p-4 text-center bg-crema-light flex flex-col items-center gap-2">
+                            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-cafe-medium">
+                              <Camera className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold text-cafe-dark">Acceso biométrico instantáneo</p>
+                              <p className="text-[10px] text-cafe-light">Inicia sesión mirando la cámara del tótem para cargar tus puntos al instante.</p>
+                            </div>
+                            <button
+                              onClick={startCamera}
+                              disabled={isCameraLoading}
+                              className="bg-cafe-dark hover:bg-cafe-medium text-white text-xs font-bold py-2 px-4 rounded-xl flex items-center gap-1.5 transition mt-1"
+                            >
+                              <Video className="w-3.5 h-3.5" />
+                              <span>{isCameraLoading ? 'Cargando cámara...' : 'Encender Cámara'}</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {cameraStream && (
+                          <div className="space-y-2">
+                            <p className="text-[11px] text-cafe-medium text-center font-medium bg-crema-light py-1 px-2 rounded-lg">
+                              {faceScanMessage}
+                            </p>
+                            
+                            <div className="flex gap-1">
+                              <button
+                                onClick={handleFaceAuthenticate}
+                                disabled={faceScanStatus === 'scanning'}
+                                className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xxs py-2 px-3 rounded-xl flex items-center justify-center gap-1 transition"
+                                style={{ minHeight: '36px' }}
+                              >
+                                <Scan className="w-3.5 h-3.5" />
+                                <span>{faceScanStatus === 'scanning' ? 'Analizando...' : 'Escanear Rostro'}</span>
+                              </button>
+
+                              {/* Force Demo Login for premium ease of demonstration */}
+                              <button
+                                onClick={handleForceDemoRecognition}
+                                disabled={faceScanStatus === 'scanning'}
+                                className="bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[10px] py-1 px-2.5 rounded-xl transition"
+                                title="Fuerza un inicio simulado para demostraciones"
+                              >
+                                Simular VIP
+                              </button>
+
+                              <button
+                                onClick={stopCamera}
+                                className="bg-gray-100 hover:bg-gray-200 text-cafe-medium rounded-xl p-2 transition"
+                              >
+                                <VideoOff className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  ) : verifiedMember ? (
+                    <div className="bg-amber-50 border border-gold/30 rounded-xl p-3 flex flex-col gap-2 relative">
+                      <div className="absolute top-2 right-2 flex items-center gap-1 bg-yellow-105 text-yellow-850 text-[9px] font-bold px-1.5 py-0.5 rounded-lg shadow-sm animate-bounce">
+                        <Sparkles className="w-2.5 h-2.5 text-amber-500" />
+                        <span>CLUB VIP ({verifiedMember.points} PTS)</span>
+                      </div>
+                      
+                      <div className="flex items-center gap-3">
+                        {verifiedMember.faceData ? (
+                          <div className="relative">
+                            <img
+                              src={verifiedMember.faceData}
+                              alt="Rostro registrado"
+                              className="w-11 h-11 rounded-full object-cover border-2 border-gold shadow-sm"
+                            />
+                            <div className="absolute -bottom-1 -right-1 bg-emerald-500 text-white p-0.5 rounded-full border border-white">
+                              <ShieldCheck className="w-2.5 h-2.5" />
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="w-11 h-11 rounded-full bg-amber-100 text-cafe-dark border-2 border-dashed border-cafe-light flex items-center justify-center font-bold text-sm">
+                            {verifiedMember.name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+
+                        <div className="flex-1">
+                          <p className="text-[10px] font-bold text-cafe-light uppercase leading-tight">Socio del Club</p>
+                          <h4 className="font-bold text-cafe-dark text-sm leading-tight">{verifiedMember.name}</h4>
+                          <p className="text-[10px] text-cafe-light font-mono mt-0.5">RUT: {verifiedMember.rut}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-between items-center border-t border-dashed border-amber-200 pt-2 mt-1">
+                        <p className="text-[10px] text-oliva font-medium flex items-center gap-1">
+                          <Award className="w-3.5 h-3.5" />
+                          <span>Sumarás <strong>{totalPointsEarned} pts</strong> con esta compra</span>
+                        </p>
+                        <button
+                          onClick={() => { setVerifiedMember(null); setRutInput(''); stopCamera(); }}
+                          className="text-[10px] text-red-500 hover:underline font-bold"
+                        >
+                          Cerrar Sesión
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     /* Member NOT registered: Prompt registration */
                     <form onSubmit={handleRegister} className="bg-amber-50/50 border border-dashed border-cafe-light rounded-xl p-3 space-y-2">
-                      <p className="text-[11px] text-amber-800 font-medium">
+                       <p className="text-[11px] text-amber-800 font-medium">
                         RUT no registrado. ¡Regístrate gratis y obtén 100 puntos de bienvenida!
                       </p>
+                      
                       <div className="space-y-1">
                         <span className="text-[9px] font-bold text-cafe-light block">RUT</span>
                         <input
@@ -600,6 +895,7 @@ export default function TotemView({
                           className="w-full bg-crema-dark/50 text-cafe-dark border border-crema-dark rounded-lg py-1.5 px-2.5 text-xs font-mono font-bold"
                         />
                       </div>
+                      
                       <div className="space-y-1">
                         <span className="text-[9px] font-bold text-cafe-light block">NOMBRE COMPLETO</span>
                         <input
@@ -608,9 +904,77 @@ export default function TotemView({
                           placeholder="Tu Nombre..."
                           value={newMemberName}
                           onChange={(e) => setNewMemberName(e.target.value)}
-                          className="w-full bg-white text-cafe-dark border border-crema-dark rounded-lg py-1.5 px-2.5 text-xs focus:outline-none"
+                          className="w-full bg-white text-cafe-dark border border-crema-dark rounded-lg py-1.5 px-2.5 text-xs focus:outline-none focus:border-cafe-light"
                         />
                       </div>
+
+                      {/* Face capture attachment for New Member Registration */}
+                      <div className="bg-white/75 p-2.5 rounded-lg border border-crema-dark/60 space-y-1.5">
+                        <span className="text-[9px] font-bold text-cafe-medium flex items-center gap-1">
+                          <Camera className="w-3 h-3 text-gold" />
+                          <span>¿VINCULAR ROSTRO (FACE ID)?</span>
+                        </span>
+                        
+                        {tempFaceData ? (
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={tempFaceData}
+                              alt="Foto Face ID"
+                              className="w-10 h-10 rounded-lg object-cover border border-cafe-medium"
+                            />
+                            <div className="flex-1">
+                              <p className="text-[9px] font-bold text-emerald-700 flex items-center gap-1">
+                                <Check className="w-2.5 h-2.5" />
+                                <span>Rostro Vinculado</span>
+                              </p>
+                              <p className="text-[8px] text-cafe-light leading-none">Listo para reconocer en futuros pedidos.</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setTempFaceData(null)}
+                              className="text-red-500 hover:text-red-600 text-xxs underline font-medium"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        ) : cameraStream ? (
+                          <div className="space-y-2">
+                            <video
+                              ref={videoRef}
+                              autoPlay
+                              playsInline
+                              muted
+                              className="w-full h-28 object-cover rounded-md scale-x-[-1] bg-black border border-crema-dark"
+                            />
+                            <div className="flex gap-1.5">
+                              <button
+                                type="button"
+                                onClick={handleCaptureFaceForRegistration}
+                                className="flex-1 bg-cafe-dark hover:bg-cafe-medium text-white text-xxs py-1.5 rounded-lg font-bold"
+                              >
+                                Capturar Foto
+                              </button>
+                              <button
+                                type="button"
+                                onClick={stopCamera}
+                                className="bg-gray-100 text-cafe-medium text-xxs px-2.5 py-1.5 rounded-lg"
+                              >
+                                Apagar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={startCamera}
+                            className="w-full bg-crema-light hover:bg-crema-dark text-cafe-medium text-xxs font-semibold py-1.5 px-2 rounded-lg border border-dashed border-cafe-light flex items-center justify-center gap-1.5 transition"
+                          >
+                            <Smile className="w-3.5 h-3.5 text-cafe-light" />
+                            <span>Abrir cámara para asociar rostro</span>
+                          </button>
+                        )}
+                      </div>
+
                       <div className="flex gap-2 pt-1">
                         <button
                           type="submit"
@@ -620,7 +984,7 @@ export default function TotemView({
                         </button>
                         <button
                           type="button"
-                          onClick={() => { setIsNewMemberPrompt(false); setRutInput(''); }}
+                          onClick={() => { setIsNewMemberPrompt(false); setRutInput(''); setTempFaceData(null); stopCamera(); }}
                           className="bg-gray-100 text-cafe-medium border border-gray-200 font-bold text-xxs py-2 px-3 rounded-lg"
                         >
                           Cancelar

@@ -1,6 +1,6 @@
 {
   "name": "Café Conexión",
   "description": "Sistema digital integrado para Café Conexión: tótem de autoservicio, panel de barista y administración.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

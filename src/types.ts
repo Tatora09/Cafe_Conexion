@@ -40,4 +40,5 @@ export interface LoyaltyMember {
   rut: string;
   name: string;
   points: number;
+  faceData?: string; // Base64 snapshot of face for visual comparison/simulated recognition
 }
